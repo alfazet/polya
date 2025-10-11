@@ -1,6 +1,7 @@
 use eframe::egui;
+use egui::Pos2;
 
-use crate::state::{CreatingState, IdleState};
+use crate::state::{CreatingState, EditingState};
 
 mod edge;
 mod polygon;
@@ -18,7 +19,7 @@ enum AppState {
     Creating(CreatingState),
     // the polygon is on the screen already,
     // and the user can edit it
-    Idle(IdleState),
+    Editing(EditingState),
 }
 
 #[derive(Default)]
@@ -37,9 +38,15 @@ impl PolygonEditor {
         }
     }
 
-    fn run_creating_state(&mut self) {
+    fn run_creating_state(&mut self, initial_pos: Pos2) {
         if !matches!(self.app_state, AppState::Creating(_)) {
-            self.app_state = AppState::Creating(CreatingState::default());
+            self.app_state = AppState::Creating(CreatingState::new(initial_pos));
+        }
+    }
+
+    fn run_editing_state(&mut self) {
+        if let AppState::Creating(state) = &self.app_state {
+            self.app_state = AppState::Editing(EditingState::new(state));
         }
     }
 }
@@ -50,8 +57,26 @@ impl eframe::App for PolygonEditor {
         for key in keys {
             match key {
                 egui::Key::Delete => self.run_empty_state(),
-                egui::Key::C => self.run_creating_state(),
                 _ => break,
+            }
+        }
+        let pointer = ctx.input(|input| input.pointer.clone());
+        if let Some(clicked_pos) = pointer.interact_pos()
+            && pointer.primary_released()
+        {
+            match &mut self.app_state {
+                AppState::Empty => {
+                    self.run_creating_state(clicked_pos);
+                }
+                AppState::Creating(state) => {
+                    if state.is_closing_click(clicked_pos) {
+                        state.close();
+                        self.run_editing_state();
+                    } else {
+                        state.append_vertex(clicked_pos);
+                    }
+                }
+                AppState::Editing(_) => (), // check which edge/vertex was clicked and go from there
             }
         }
 
@@ -63,7 +88,7 @@ impl eframe::App for PolygonEditor {
                 });
             }
             AppState::Creating(state) => state.draw(ctx),
-            AppState::Idle(state) => state.draw(ctx),
+            AppState::Editing(state) => state.draw(ctx),
         }
     }
 }
