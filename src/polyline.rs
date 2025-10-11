@@ -22,8 +22,7 @@ impl Polyline {
     pub fn append_vertex(&mut self, pos: Pos2) {
         let new_vertex = Vertex::new(pos);
         if let Some(last_vertex) = self.vertices.last() {
-            self.edges
-                .push(Edge::new(*last_vertex, new_vertex, EdgeKind::Straight));
+            self.edges.push(Edge::new(*last_vertex, new_vertex));
         }
         self.vertices.push(new_vertex);
     }
@@ -32,7 +31,6 @@ impl Polyline {
         self.edges.push(Edge::new(
             self.edges.last().unwrap().end,
             self.edges.first().unwrap().start,
-            EdgeKind::Straight,
         ));
     }
 }

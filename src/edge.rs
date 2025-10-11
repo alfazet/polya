@@ -1,12 +1,16 @@
-use crate::vertex::Vertex;
+use egui::Pos2;
 
-#[derive(Clone, Copy)]
+use crate::{constants, geometry, vertex::Vertex};
+
+#[derive(Clone, Copy, Default)]
 pub enum EdgeKind {
+    #[default]
     Straight,
+    FixedLength(f32),
     Vertical,
     Diagonal,
-    Bezier,
-    CircleArc,
+    Bezier(Pos2, Pos2),
+    CircleArc(Pos2, f32),
 }
 
 #[derive(Clone, Copy)]
@@ -17,7 +21,18 @@ pub struct Edge {
 }
 
 impl Edge {
-    pub fn new(start: Vertex, end: Vertex, kind: EdgeKind) -> Self {
-        Self { start, end, kind }
+    pub fn new(start: Vertex, end: Vertex) -> Self {
+        Self {
+            start,
+            end,
+            kind: EdgeKind::default(),
+        }
+    }
+
+    pub fn is_near(&self, pos: Pos2) -> bool {
+        let points = geometry::bresenham_points(self.start.pos, self.end.pos);
+        points
+            .iter()
+            .any(|p| p.distance_sq(pos) <= constants::TOLERANCE * constants::TOLERANCE)
     }
 }
