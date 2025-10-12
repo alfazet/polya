@@ -1,5 +1,9 @@
 use egui::Pos2;
 
+pub fn midpoint(p0: Pos2, p1: Pos2) -> Pos2 {
+    Pos2::new((p0.x + p1.x) / 2.0, (p0.y + p1.y) / 2.0)
+}
+
 pub fn bresenham_points(p0: Pos2, p1: Pos2) -> Vec<Pos2> {
     let (mut x0, mut y0, mut x1, mut y1) = (p0.x as i32, p0.y as i32, p1.x as i32, p1.y as i32);
     // if dy > dx, the line goes through octants 2/3/6/7

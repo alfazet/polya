@@ -113,6 +113,7 @@ impl eframe::App for PolygonEditor {
                 if let Some(key) = pressed_key {
                     match key {
                         egui::Key::X => state.remove_vertex(),
+                        egui::Key::S => state.subdivide_edge(),
                         _ => self.handle_key(key),
                     }
                 }

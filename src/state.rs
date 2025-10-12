@@ -77,6 +77,7 @@ impl EditingState {
             ui.small("[Del]\tRemove polygon");
             ui.small("[A]\t\tToggle line-drawing algorithm");
             ui.small("[X]\t\tRemove vertex (if possible)");
+            ui.small("[S]\t\tSubdivide edge");
             ui.small("[B]\t\tToggle Bézier curve");
             ui.small("[C]\t\tToggle circular arc");
             ui.small("[V]\t\tVertical edge constraint");
@@ -132,6 +133,13 @@ impl EditingState {
             self.polygon.polyline.remove_vertex(i);
             self.selected_vertex_id = None;
             self.dragged_vertex_id = None;
+        }
+    }
+
+    pub fn subdivide_edge(&mut self) {
+        if let Some(i) = self.selected_edge_id {
+            self.polygon.polyline.subdivide_edge(i);
+            self.selected_edge_id = None;
         }
     }
 }

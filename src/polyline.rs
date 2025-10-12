@@ -2,6 +2,7 @@ use egui::{Pos2, Vec2};
 
 use crate::{
     edge::{Edge, EdgeKind},
+    geometry,
     vertex::Vertex,
 };
 
@@ -46,6 +47,23 @@ impl Polyline {
     pub fn remove_vertex(&mut self, i: usize) {
         if self.vertices.len() > 3 {
             self.vertices.remove(i);
+        }
+    }
+
+    pub fn subdivide_edge(&mut self, i: usize) {
+        if i == self.vertices.len() - 1 {
+            self.append_vertex(geometry::midpoint(
+                self.vertices.last().unwrap().pos,
+                self.vertices.first().unwrap().pos,
+            ));
+        } else {
+            self.vertices.insert(
+                i + 1,
+                Vertex::new(geometry::midpoint(
+                    self.vertices[i].pos,
+                    self.vertices[i + 1].pos,
+                )),
+            );
         }
     }
 }
