@@ -9,6 +9,9 @@ use crate::{
 };
 
 #[derive(Default)]
+pub struct EmptyState;
+
+#[derive(Default)]
 pub struct CreatingState {
     polyline: Polyline,
     line_algo: LineAlgorithm,
@@ -22,6 +25,14 @@ pub struct EditingState {
     dragged_vertex_id: Option<usize>,
 }
 
+impl EmptyState {
+    pub fn draw(&self, ctx: &egui::Context) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading("Place the first vertex [LMB]");
+        });
+    }
+}
+
 impl CreatingState {
     pub fn new(initial_pos: Pos2) -> Self {
         let polyline = Polyline::new(initial_pos);
@@ -33,7 +44,7 @@ impl CreatingState {
 
     pub fn draw(&self, ctx: &egui::Context, offset: Vec2, line_algo: LineAlgorithm) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Connect the vertices (DEL to restart)");
+            ui.heading("Place and connect the vertices (restart with [Del])");
             drawing::draw_polyline(ui, &self.polyline, offset, false, Some(0), None, line_algo);
         });
     }
@@ -43,11 +54,6 @@ impl CreatingState {
             && self.polyline.vertices[0].pos.distance_sq(pos)
                 <= constants::VERTEX_RADIUS * constants::VERTEX_RADIUS
     }
-
-    // join the last vertex with the first one to close the polyline into a polygon
-    // pub fn close(&mut self) {
-    //     self.polyline.close();
-    // }
 
     pub fn append_vertex(&mut self, pos: Pos2) {
         self.polyline.append_vertex(pos);
@@ -67,7 +73,17 @@ impl EditingState {
 
     pub fn draw(&self, ctx: &egui::Context, offset: Vec2, line_algo: LineAlgorithm) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Edit the polygon (DEL to delete)");
+            ui.heading("Select vertices/edges to edit");
+            ui.small("[Del]\tRemove polygon");
+            ui.small("[A]\t\tToggle line-drawing algorithm");
+            ui.small("[X]\t\tRemove vertex (if possible)");
+            ui.small("[B]\t\tToggle Bézier curve");
+            ui.small("[C]\t\tToggle circular arc");
+            ui.small("[V]\t\tVertical edge constraint");
+            ui.small("[D]\t\tDiagonal edge constraint");
+            ui.small("[1]\t\tG0 continuity in vertex");
+            ui.small("[2]\t\tG1 continuity in vertex");
+            ui.small("[3]\t\tC1 continuity in vertex");
             drawing::draw_polyline(
                 ui,
                 &self.polygon.polyline,
@@ -107,6 +123,12 @@ impl EditingState {
     pub fn drag_vertex(&mut self, delta: Vec2) {
         if let Some(i) = self.selected_vertex_id {
             self.polygon.polyline.drag_vertex(i, delta);
+        }
+    }
+
+    pub fn remove_vertex(&mut self) {
+        if let Some(i) = self.selected_vertex_id {
+            self.polygon.polyline.remove_vertex(i);
         }
     }
 }

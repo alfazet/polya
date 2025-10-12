@@ -3,7 +3,7 @@ use egui::{Pos2, Vec2};
 
 use crate::{
     drawing::LineAlgorithm,
-    state::{CreatingState, EditingState},
+    state::{CreatingState, EditingState, EmptyState},
 };
 
 mod constants;
@@ -15,11 +15,9 @@ mod polyline;
 mod state;
 mod vertex;
 
-#[derive(Default)]
 enum AppState {
     // nothing is on the screen
-    #[default]
-    Empty,
+    Empty(EmptyState),
     // we're creating the polygon,
     // the user can only edit the polyline
     Creating(CreatingState),
@@ -28,7 +26,6 @@ enum AppState {
     Editing(EditingState),
 }
 
-#[derive(Default)]
 struct PolygonEditor {
     app_state: AppState,
     origin_offset: Vec2,
@@ -37,24 +34,28 @@ struct PolygonEditor {
 
 impl PolygonEditor {
     fn new(_: &eframe::CreationContext<'_>) -> Self {
-        Self::default()
-    }
-
-    fn run_empty_state(&mut self) {
-        if !matches!(self.app_state, AppState::Empty) {
-            self.app_state = AppState::Empty;
+        Self {
+            app_state: AppState::Empty(EmptyState::default()),
+            origin_offset: Vec2::ZERO,
+            line_algo: LineAlgorithm::Builtin,
         }
     }
 
-    fn run_creating_state(&mut self, initial_pos: Pos2) {
-        if !matches!(self.app_state, AppState::Creating(_)) {
-            self.app_state = AppState::Creating(CreatingState::new(initial_pos));
-        }
-    }
-
-    fn run_editing_state(&mut self) {
-        if let AppState::Creating(state) = &self.app_state {
-            self.app_state = AppState::Editing(EditingState::new(state));
+    fn handle_key(&mut self, key: egui::Key) {
+        match key {
+            egui::Key::Delete => self.app_state = AppState::Empty(EmptyState::default()),
+            egui::Key::ArrowLeft => self.origin_offset += constants::STEP * Vec2::LEFT,
+            egui::Key::ArrowRight => self.origin_offset += constants::STEP * Vec2::RIGHT,
+            egui::Key::ArrowUp => self.origin_offset += constants::STEP * Vec2::UP,
+            egui::Key::ArrowDown => self.origin_offset += constants::STEP * Vec2::DOWN,
+            egui::Key::Num0 => self.origin_offset = Vec2::ZERO,
+            egui::Key::A => {
+                self.line_algo = match self.line_algo {
+                    LineAlgorithm::Builtin => LineAlgorithm::Bresenham,
+                    LineAlgorithm::Bresenham => LineAlgorithm::Builtin,
+                }
+            }
+            _ => (),
         }
     }
 }
@@ -62,60 +63,64 @@ impl PolygonEditor {
 impl eframe::App for PolygonEditor {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
         ctx.set_zoom_factor(2.0);
-        // TODO: refactor, first match on state, later check keys/clicks inside a given state
-        let keys = ctx.input(|input| input.keys_down.clone());
-        for key in keys {
-            match key {
-                egui::Key::Delete => self.run_empty_state(),
-                egui::Key::ArrowLeft => self.origin_offset += constants::STEP * Vec2::LEFT,
-                egui::Key::ArrowRight => self.origin_offset += constants::STEP * Vec2::RIGHT,
-                egui::Key::ArrowUp => self.origin_offset += constants::STEP * Vec2::UP,
-                egui::Key::ArrowDown => self.origin_offset += constants::STEP * Vec2::DOWN,
-                egui::Key::Num0 => self.origin_offset = Vec2::ZERO,
-                egui::Key::B => {
-                    self.line_algo = match self.line_algo {
-                        LineAlgorithm::Builtin => LineAlgorithm::Bresenham,
-                        LineAlgorithm::Bresenham => LineAlgorithm::Builtin,
-                    }
-                }
-                _ => break,
+        // handling events
+        let events = ctx.input(|input| input.events.clone());
+        let mut pressed_key = None;
+        for event in events {
+            if let egui::Event::Key { key, pressed, .. } = event
+                && !pressed
+            {
+                pressed_key = Some(key);
+                break;
             }
         }
         let pointer = ctx.input(|input| input.pointer.clone());
-        if let Some(clicked_pos) = pointer.interact_pos()
-            && pointer.is_decidedly_dragging()
-        {
-            if let AppState::Editing(state) = &mut self.app_state {
-                state.drag_vertex(pointer.delta());
-            }
-        } else if let Some(clicked_pos) = pointer.interact_pos()
-            && pointer.primary_released()
-        {
-            let actual_pos = clicked_pos - self.origin_offset;
-            match &mut self.app_state {
-                AppState::Empty => {
-                    self.run_creating_state(actual_pos);
+        let pointer_pos = pointer.interact_pos().map(|pos| pos - self.origin_offset);
+        match &mut self.app_state {
+            AppState::Empty(state) => {
+                if let Some(pos) = pointer_pos
+                    && pointer.primary_released()
+                {
+                    self.app_state = AppState::Creating(CreatingState::new(pos));
                 }
-                AppState::Creating(state) => {
-                    if state.is_closing_click(actual_pos) {
-                        self.run_editing_state();
+                if let Some(key) = pressed_key {
+                    self.handle_key(key);
+                }
+            }
+            AppState::Creating(state) => {
+                if let Some(pos) = pointer_pos
+                    && pointer.primary_released()
+                {
+                    if state.is_closing_click(pos) {
+                        // close the polyline and start the editing
+                        self.app_state = AppState::Editing(EditingState::new(state));
                     } else {
-                        state.append_vertex(actual_pos);
+                        state.append_vertex(pos);
                     }
                 }
-                AppState::Editing(state) => {
-                    state.check_click(actual_pos);
+                if let Some(key) = pressed_key {
+                    self.handle_key(key);
+                }
+            }
+            AppState::Editing(state) => {
+                if let Some(pos) = pointer_pos {
+                    if pointer.primary_released() {
+                        state.check_click(pos);
+                    } else if pointer.is_decidedly_dragging() {
+                        state.drag_vertex(pointer.delta());
+                    }
+                }
+                if let Some(key) = pressed_key {
+                    match key {
+                        egui::Key::X => state.remove_vertex(),
+                        _ => self.handle_key(key),
+                    }
                 }
             }
         }
-
-        // TODO: draw the top bar
+        // drawing
         match &self.app_state {
-            AppState::Empty => {
-                egui::CentralPanel::default().show(ctx, |ui| {
-                    ui.heading("Click anywhere to start drawing");
-                });
-            }
+            AppState::Empty(state) => state.draw(ctx),
             AppState::Creating(state) => state.draw(ctx, self.origin_offset, self.line_algo),
             AppState::Editing(state) => state.draw(ctx, self.origin_offset, self.line_algo),
         }

@@ -43,7 +43,9 @@ impl Polyline {
         self.vertices[i].pos += delta;
     }
 
-    pub fn delete_vertex(&mut self, i: usize) {
-        self.vertices.remove(i);
+    pub fn remove_vertex(&mut self, i: usize) {
+        if self.vertices.len() > 3 {
+            self.vertices.remove(i);
+        }
     }
 }
