@@ -19,6 +19,7 @@ pub struct EditingState {
     line_algo: LineAlgorithm,
     selected_vertex_id: Option<usize>,
     selected_edge_id: Option<usize>,
+    dragged_vertex_id: Option<usize>,
 }
 
 impl CreatingState {
@@ -33,7 +34,7 @@ impl CreatingState {
     pub fn draw(&self, ctx: &egui::Context, offset: Vec2, line_algo: LineAlgorithm) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Connect the vertices (DEL to restart)");
-            drawing::draw_polyline(ui, &self.polyline, offset, Some(0), None, line_algo);
+            drawing::draw_polyline(ui, &self.polyline, offset, false, Some(0), None, line_algo);
         });
     }
 
@@ -44,9 +45,9 @@ impl CreatingState {
     }
 
     // join the last vertex with the first one to close the polyline into a polygon
-    pub fn close(&mut self) {
-        self.polyline.close();
-    }
+    // pub fn close(&mut self) {
+    //     self.polyline.close();
+    // }
 
     pub fn append_vertex(&mut self, pos: Pos2) {
         self.polyline.append_vertex(pos);
@@ -60,6 +61,7 @@ impl EditingState {
             line_algo: LineAlgorithm::default(),
             selected_vertex_id: None,
             selected_edge_id: None,
+            dragged_vertex_id: None,
         }
     }
 
@@ -70,6 +72,7 @@ impl EditingState {
                 ui,
                 &self.polygon.polyline,
                 offset,
+                true,
                 self.selected_vertex_id,
                 self.selected_edge_id,
                 line_algo,
@@ -77,19 +80,33 @@ impl EditingState {
         });
     }
 
-    pub fn check_edge_click(&mut self, pos: Pos2) {
-        // if bezier, check bresenham points of the segment between the two control points
-        // if circular, ...
-        // else, check bresenham points of the segment itself
-
+    pub fn check_click(&mut self, pos: Pos2) {
+        if let Some(i) = self.polygon.polyline.vertices.iter().position(|vertex| {
+            vertex.pos.distance_sq(pos) <= constants::VERTEX_RADIUS * constants::VERTEX_RADIUS
+        }) {
+            self.selected_vertex_id = Some(i);
+            self.selected_edge_id = None;
+            return;
+        }
         if let Some(i) = self
             .polygon
             .polyline
-            .edges
+            .get_edges(true)
             .iter()
             .position(|edge| edge.is_near(pos))
         {
             self.selected_edge_id = Some(i);
+            self.selected_vertex_id = None;
+            return;
+        }
+
+        self.selected_vertex_id = None;
+        self.selected_edge_id = None;
+    }
+
+    pub fn drag_vertex(&mut self, delta: Vec2) {
+        if let Some(i) = self.selected_vertex_id {
+            self.polygon.polyline.drag_vertex(i, delta);
         }
     }
 }

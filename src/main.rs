@@ -62,6 +62,7 @@ impl PolygonEditor {
 impl eframe::App for PolygonEditor {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
         ctx.set_zoom_factor(2.0);
+        // TODO: refactor, first match on state, later check keys/clicks inside a given state
         let keys = ctx.input(|input| input.keys_down.clone());
         for key in keys {
             match key {
@@ -82,6 +83,12 @@ impl eframe::App for PolygonEditor {
         }
         let pointer = ctx.input(|input| input.pointer.clone());
         if let Some(clicked_pos) = pointer.interact_pos()
+            && pointer.is_decidedly_dragging()
+        {
+            if let AppState::Editing(state) = &mut self.app_state {
+                state.drag_vertex(pointer.delta());
+            }
+        } else if let Some(clicked_pos) = pointer.interact_pos()
             && pointer.primary_released()
         {
             let actual_pos = clicked_pos - self.origin_offset;
@@ -91,14 +98,13 @@ impl eframe::App for PolygonEditor {
                 }
                 AppState::Creating(state) => {
                     if state.is_closing_click(actual_pos) {
-                        state.close();
                         self.run_editing_state();
                     } else {
                         state.append_vertex(actual_pos);
                     }
                 }
                 AppState::Editing(state) => {
-                    state.check_edge_click(actual_pos);
+                    state.check_click(actual_pos);
                 }
             }
         }

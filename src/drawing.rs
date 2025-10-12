@@ -14,11 +14,12 @@ pub fn draw_polyline(
     ui: &egui::Ui,
     polyline: &Polyline,
     offset: Vec2,
+    closed: bool,
     selected_vertex_id: Option<usize>,
     selected_edge_id: Option<usize>,
     algo: LineAlgorithm,
 ) {
-    for (i, edge) in polyline.edges.iter().enumerate() {
+    for (i, edge) in polyline.get_edges(closed).iter().enumerate() {
         let color = match selected_edge_id {
             Some(id) if i == id => constants::EDGE_COLOR_SELECTED,
             _ => constants::EDGE_COLOR_BASE,
@@ -26,13 +27,12 @@ pub fn draw_polyline(
         match algo {
             LineAlgorithm::Builtin => {
                 ui.painter().line_segment(
-                    [edge.start.pos + offset, edge.end.pos + offset],
+                    [edge.start + offset, edge.end + offset],
                     egui::Stroke::new(constants::STROKE_WIDTH, color),
                 );
             }
             LineAlgorithm::Bresenham => {
-                let points =
-                    geometry::bresenham_points(edge.start.pos + offset, edge.end.pos + offset);
+                let points = geometry::bresenham_points(edge.start + offset, edge.end + offset);
                 for point in points {
                     ui.painter().rect_filled(
                         egui::Rect::from_min_max(point, point + Vec2::new(1.0, 1.0)),

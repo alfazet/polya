@@ -1,4 +1,4 @@
-use egui::Pos2;
+use egui::{Pos2, Vec2};
 
 use crate::{
     edge::{Edge, EdgeKind},
@@ -8,29 +8,42 @@ use crate::{
 #[derive(Clone, Default)]
 pub struct Polyline {
     pub vertices: Vec<Vertex>,
-    pub edges: Vec<Edge>,
 }
 
 impl Polyline {
-    pub fn new(iniitial_pos: Pos2) -> Self {
-        let vertices = vec![Vertex::new(iniitial_pos)];
-        let edges = Vec::new();
+    pub fn new(initial_pos: Pos2) -> Self {
+        let vertices = vec![Vertex::new(initial_pos)];
 
-        Self { vertices, edges }
+        Self { vertices }
+    }
+
+    pub fn get_edges(&self, closed: bool) -> Vec<Edge> {
+        let mut edges = Vec::new();
+        if self.vertices.len() <= 1 {
+            return edges;
+        }
+        for pair in self.vertices.windows(2) {
+            edges.push(Edge::new(pair[0].pos, pair[1].pos));
+        }
+        if closed {
+            edges.push(Edge::new(
+                self.vertices[self.vertices.len() - 1].pos,
+                self.vertices[0].pos,
+            ));
+        }
+
+        edges
     }
 
     pub fn append_vertex(&mut self, pos: Pos2) {
-        let new_vertex = Vertex::new(pos);
-        if let Some(last_vertex) = self.vertices.last() {
-            self.edges.push(Edge::new(*last_vertex, new_vertex));
-        }
-        self.vertices.push(new_vertex);
+        self.vertices.push(Vertex::new(pos));
     }
 
-    pub fn close(&mut self) {
-        self.edges.push(Edge::new(
-            self.edges.last().unwrap().end,
-            self.edges.first().unwrap().start,
-        ));
+    pub fn drag_vertex(&mut self, i: usize, delta: Vec2) {
+        self.vertices[i].pos += delta;
+    }
+
+    pub fn delete_vertex(&mut self, i: usize) {
+        self.vertices.remove(i);
     }
 }
