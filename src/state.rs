@@ -81,6 +81,7 @@ impl EditingState {
             ui.small("[C]\t\tToggle circular arc");
             ui.small("[V]\t\tVertical edge constraint");
             ui.small("[D]\t\tDiagonal edge constraint");
+            ui.small("[L]\t\tLength constraint");
             ui.small("[1]\t\tG0 continuity in vertex");
             ui.small("[2]\t\tG1 continuity in vertex");
             ui.small("[3]\t\tC1 continuity in vertex");
@@ -129,6 +130,8 @@ impl EditingState {
     pub fn remove_vertex(&mut self) {
         if let Some(i) = self.selected_vertex_id {
             self.polygon.polyline.remove_vertex(i);
+            self.selected_vertex_id = None;
+            self.dragged_vertex_id = None;
         }
     }
 }
