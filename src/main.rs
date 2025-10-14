@@ -30,6 +30,7 @@ struct PolygonEditor {
     app_state: AppState,
     origin_offset: Vec2,
     line_algo: LineAlgorithm,
+    length_popup_open: bool,
 }
 
 impl PolygonEditor {
@@ -38,6 +39,7 @@ impl PolygonEditor {
             app_state: AppState::Empty(EmptyState::default()),
             origin_offset: Vec2::ZERO,
             line_algo: LineAlgorithm::Builtin,
+            length_popup_open: false,
         }
     }
 
@@ -114,16 +116,23 @@ impl eframe::App for PolygonEditor {
                     match key {
                         egui::Key::X => state.remove_vertex(),
                         egui::Key::S => state.subdivide_edge(),
+                        egui::Key::V => state.toggle_vertical(),
+                        egui::Key::D => state.toggle_diagonal(),
+                        egui::Key::L => (),
                         _ => self.handle_key(key),
                     }
                 }
             }
         }
         // drawing
-        match &self.app_state {
+        match &mut self.app_state {
             AppState::Empty(state) => state.draw(ctx),
             AppState::Creating(state) => state.draw(ctx, self.origin_offset, self.line_algo),
-            AppState::Editing(state) => state.draw(ctx, self.origin_offset, self.line_algo),
+            AppState::Editing(state) => {
+                // apply constraints
+                state.apply_constraints();
+                state.draw(ctx, self.origin_offset, self.line_algo);
+            }
         }
     }
 }

@@ -122,6 +122,11 @@ impl EditingState {
         self.selected_edge_id = None;
     }
 
+    pub fn apply_constraints(&mut self) {
+        let start = self.selected_vertex_id.unwrap_or(0);
+        self.polygon.polyline.apply_constraints(start);
+    }
+
     pub fn drag_vertex(&mut self, delta: Vec2) {
         if let Some(i) = self.selected_vertex_id {
             self.polygon.polyline.drag_vertex(i, delta);
@@ -131,15 +136,31 @@ impl EditingState {
     pub fn remove_vertex(&mut self) {
         if let Some(i) = self.selected_vertex_id {
             self.polygon.polyline.remove_vertex(i);
-            self.selected_vertex_id = None;
-            self.dragged_vertex_id = None;
         }
+        self.selected_vertex_id = None;
+        self.selected_edge_id = None;
     }
 
     pub fn subdivide_edge(&mut self) {
         if let Some(i) = self.selected_edge_id {
             self.polygon.polyline.subdivide_edge(i);
-            self.selected_edge_id = None;
         }
+        self.selected_edge_id = None;
+    }
+
+    pub fn toggle_vertical(&mut self) {
+        if let Some(i) = self.selected_edge_id
+            && !self.polygon.polyline.any_vertical_neighbor(i)
+        {
+            self.polygon.polyline.toggle_vertical(i);
+        }
+        self.selected_vertex_id = None;
+    }
+
+    pub fn toggle_diagonal(&mut self) {
+        if let Some(i) = self.selected_edge_id {
+            self.polygon.polyline.toggle_diagonal(i);
+        }
+        self.selected_vertex_id = None;
     }
 }

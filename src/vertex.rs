@@ -8,10 +8,22 @@ pub enum VertexKind {
     C1,
 }
 
+#[derive(Clone, Copy, Default)]
+pub enum Constraint {
+    #[default]
+    None,
+    Length(f32),
+    Vertical,
+    Diagonal,
+    Bezier(Pos2, Pos2),
+    CircleArc(Pos2, f32),
+}
+
 #[derive(Clone, Copy)]
 pub struct Vertex {
     pub pos: Pos2,
     pub kind: VertexKind,
+    pub constraint: Constraint,
 }
 
 impl Vertex {
@@ -19,6 +31,7 @@ impl Vertex {
         Self {
             pos,
             kind: VertexKind::default(),
+            constraint: Constraint::default(),
         }
     }
 }
