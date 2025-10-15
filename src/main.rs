@@ -30,7 +30,7 @@ struct PolygonEditor {
     app_state: AppState,
     origin_offset: Vec2,
     line_algo: LineAlgorithm,
-    length_popup_open: bool,
+    popup_open: bool,
 }
 
 impl PolygonEditor {
@@ -39,7 +39,7 @@ impl PolygonEditor {
             app_state: AppState::Empty(EmptyState::default()),
             origin_offset: Vec2::ZERO,
             line_algo: LineAlgorithm::Builtin,
-            length_popup_open: false,
+            popup_open: false,
         }
     }
 
@@ -118,7 +118,7 @@ impl eframe::App for PolygonEditor {
                         egui::Key::S => state.subdivide_edge(),
                         egui::Key::V => state.toggle_vertical(),
                         egui::Key::D => state.toggle_diagonal(),
-                        egui::Key::L => (),
+                        egui::Key::L => state.length_dialog(),
                         _ => self.handle_key(key),
                     }
                 }

@@ -17,17 +17,27 @@ pub struct CreatingState {
     line_algo: LineAlgorithm,
 }
 
+#[derive(Default)]
+struct LengthDialog {
+    enabled: bool,
+    original: f32,
+    input: String,
+    value: f32,
+}
+
 pub struct EditingState {
     polygon: Polygon,
     line_algo: LineAlgorithm,
     selected_vertex_id: Option<usize>,
     selected_edge_id: Option<usize>,
     dragged_vertex_id: Option<usize>,
+    length_dialog: LengthDialog,
 }
 
 impl EmptyState {
     pub fn draw(&self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
+            ui.style_mut().interaction.selectable_labels = false;
             ui.heading("Place the first vertex [LMB]");
         });
     }
@@ -44,6 +54,7 @@ impl CreatingState {
 
     pub fn draw(&self, ctx: &egui::Context, offset: Vec2, line_algo: LineAlgorithm) {
         egui::CentralPanel::default().show(ctx, |ui| {
+            ui.style_mut().interaction.selectable_labels = false;
             ui.heading("Place and connect the vertices (restart with [Del])");
             drawing::draw_polyline(ui, &self.polyline, offset, false, Some(0), None, line_algo);
         });
@@ -68,11 +79,33 @@ impl EditingState {
             selected_vertex_id: None,
             selected_edge_id: None,
             dragged_vertex_id: None,
+            length_dialog: LengthDialog::default(),
         }
     }
 
-    pub fn draw(&self, ctx: &egui::Context, offset: Vec2, line_algo: LineAlgorithm) {
+    pub fn draw(&mut self, ctx: &egui::Context, offset: Vec2, line_algo: LineAlgorithm) {
+        if let Some(i) = self.selected_edge_id
+            && self.length_dialog.enabled
+        {
+            egui::Window::new("Length input")
+                .open(&mut self.length_dialog.enabled)
+                .show(ctx, |ui| {
+                    ui.add(egui::TextEdit::singleline(&mut self.length_dialog.input));
+                });
+            if let Ok(value) = self.length_dialog.input.parse::<f32>()
+                && value > 0.0
+            {
+                self.length_dialog.value = value;
+            } else if self.length_dialog.input.is_empty() {
+                self.length_dialog.value = self.length_dialog.original;
+            }
+            self.polygon
+                .polyline
+                .toggle_length(i, self.length_dialog.value);
+        }
+
         egui::CentralPanel::default().show(ctx, |ui| {
+            ui.style_mut().interaction.selectable_labels = false;
             ui.heading("Select vertices/edges to edit");
             ui.small("[Del]\tRemove polygon");
             ui.small("[A]\t\tToggle line-drawing algorithm");
@@ -98,6 +131,16 @@ impl EditingState {
         });
     }
 
+    pub fn length_dialog(&mut self) {
+        if let Some(i) = self.selected_edge_id {
+            let (v0, v1) = self.polygon.polyline.get_edge(i);
+            let len = v0.distance(v1);
+            self.length_dialog.original = len;
+            self.length_dialog.value = len;
+            self.length_dialog.enabled = true;
+        }
+    }
+
     pub fn check_click(&mut self, pos: Pos2) {
         if let Some(i) = self.polygon.polyline.vertices.iter().position(|vertex| {
             vertex.pos.distance_sq(pos) <= constants::VERTEX_RADIUS * constants::VERTEX_RADIUS
@@ -118,8 +161,8 @@ impl EditingState {
             return;
         }
 
-        self.selected_vertex_id = None;
-        self.selected_edge_id = None;
+        // self.selected_vertex_id = None;
+        // self.selected_edge_id = None;
     }
 
     pub fn apply_constraints(&mut self) {

@@ -31,6 +31,14 @@ impl Polyline {
         }
     }
 
+    pub fn get_edge(&self, i: usize) -> (Pos2, Pos2) {
+        if i == self.vertices.len() - 1 {
+            (self.vertices[i].pos, self.vertices[0].pos)
+        } else {
+            (self.vertices[i].pos, self.vertices[i + 1].pos)
+        }
+    }
+
     pub fn get_edges(&self, closed: bool) -> Vec<Edge> {
         let mut edges = Vec::new();
         if self.vertices.len() <= 1 {
@@ -95,6 +103,17 @@ impl Polyline {
         self.vertices[next].pos.y = self.vertices[i].pos.y + len * adjusted_angle_rad.sin();
     }
 
+    fn apply_length(&mut self, i: usize, target_len: f32) {
+        let next = self.next_vertex(i);
+        let v = Vec2::new(
+            self.vertices[next].pos.x - self.vertices[i].pos.x,
+            self.vertices[next].pos.y - self.vertices[i].pos.y,
+        );
+        let scale = target_len / v.length();
+        let scaled_v = scale * v;
+        self.vertices[next].pos = self.vertices[i].pos + scaled_v;
+    }
+
     // try to apply all constraints, with the start-th vertex fixed
     pub fn apply_constraints(&mut self, start: usize) {
         let backup = self.vertices.clone();
@@ -107,6 +126,7 @@ impl Polyline {
                 match self.vertices[i].constraint {
                     Constraint::Vertical => self.apply_vertical(i),
                     Constraint::Diagonal => self.apply_diagonal(i),
+                    Constraint::Length(len) => self.apply_length(i, len),
                     _ => (),
                 }
                 i = (i + 1) % self.vertices.len();
@@ -173,5 +193,9 @@ impl Polyline {
 
     pub fn toggle_diagonal(&mut self, i: usize) {
         self.vertices[i].constraint = Constraint::Diagonal;
+    }
+
+    pub fn toggle_length(&mut self, i: usize, length: f32) {
+        self.vertices[i].constraint = Constraint::Length(length);
     }
 }
