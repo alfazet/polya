@@ -1,5 +1,6 @@
 use eframe::egui;
 
+pub const BEZIER_D: f32 = 0.01;
 pub const STEP: f32 = 4.0;
 pub const TOLERANCE: f32 = 6.0;
 pub const VERTEX_RADIUS: f32 = 5.0;

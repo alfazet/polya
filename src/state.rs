@@ -133,9 +133,14 @@ impl EditingState {
 
     pub fn length_dialog(&mut self) {
         if let Some(i) = self.selected_edge_id {
+            if self.polygon.polyline.is_length_constrained(i) {
+                self.polygon.polyline.reset_constraint(i);
+                return;
+            }
             let (v0, v1) = self.polygon.polyline.get_edge(i);
             let len = v0.distance(v1);
             self.length_dialog.original = len;
+            self.length_dialog.input = len.to_string();
             self.length_dialog.value = len;
             self.length_dialog.enabled = true;
         }
@@ -160,9 +165,6 @@ impl EditingState {
             self.selected_vertex_id = None;
             return;
         }
-
-        // self.selected_vertex_id = None;
-        // self.selected_edge_id = None;
     }
 
     pub fn apply_constraints(&mut self) {
@@ -203,6 +205,13 @@ impl EditingState {
     pub fn toggle_diagonal(&mut self) {
         if let Some(i) = self.selected_edge_id {
             self.polygon.polyline.toggle_diagonal(i);
+        }
+        self.selected_vertex_id = None;
+    }
+
+    pub fn toggle_bezier(&mut self) {
+        if let Some(i) = self.selected_edge_id {
+            self.polygon.polyline.toggle_bezier(i);
         }
         self.selected_vertex_id = None;
     }

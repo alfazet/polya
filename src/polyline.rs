@@ -1,7 +1,7 @@
 use egui::{Pos2, Vec2};
 
 use crate::{
-    edge::Edge,
+    edge::{Edge, EdgeKind},
     geometry,
     vertex::{Constraint, Vertex},
 };
@@ -45,12 +45,21 @@ impl Polyline {
             return edges;
         }
         for pair in self.vertices.windows(2) {
-            edges.push(Edge::new(pair[0].pos, pair[1].pos));
+            let kind = match pair[0].constraint {
+                Constraint::Bezier(c0, c1) => EdgeKind::Bezier(c0, c1),
+                _ => EdgeKind::Straight,
+            };
+            edges.push(Edge::new(pair[0].pos, pair[1].pos, kind));
         }
         if closed {
+            let kind = match self.vertices[self.vertices.len() - 1].constraint {
+                Constraint::Bezier(c0, c1) => EdgeKind::Bezier(c0, c1),
+                _ => EdgeKind::Straight,
+            };
             edges.push(Edge::new(
                 self.vertices[self.vertices.len() - 1].pos,
                 self.vertices[0].pos,
+                kind,
             ));
         }
 
@@ -152,7 +161,6 @@ impl Polyline {
     // check if all constraints are satisfied with
     // the given vertex positions
     pub fn check_constraints(&self) -> bool {
-        // TODO
         true
     }
 
@@ -166,17 +174,24 @@ impl Polyline {
 
     pub fn remove_vertex(&mut self, i: usize) {
         if self.vertices.len() > 3 {
+            if i == 0 {
+                self.vertices.last_mut().unwrap().constraint = Constraint::None;
+            } else {
+                self.vertices[i - 1].constraint = Constraint::None;
+            }
             self.vertices.remove(i);
         }
     }
 
     pub fn subdivide_edge(&mut self, i: usize) {
         if i == self.vertices.len() - 1 {
+            self.vertices.last_mut().unwrap().constraint = Constraint::None;
             self.append_vertex(geometry::midpoint(
                 self.vertices.last().unwrap().pos,
                 self.vertices.first().unwrap().pos,
             ));
         } else {
+            self.vertices[i].constraint = Constraint::None;
             self.vertices.insert(
                 i + 1,
                 Vertex::new(geometry::midpoint(
@@ -188,14 +203,38 @@ impl Polyline {
     }
 
     pub fn toggle_vertical(&mut self, i: usize) {
-        self.vertices[i].constraint = Constraint::Vertical;
+        self.vertices[i].constraint = match self.vertices[i].constraint {
+            Constraint::Vertical => Constraint::None,
+            _ => Constraint::Vertical,
+        };
     }
 
     pub fn toggle_diagonal(&mut self, i: usize) {
-        self.vertices[i].constraint = Constraint::Diagonal;
+        self.vertices[i].constraint = match self.vertices[i].constraint {
+            Constraint::Diagonal => Constraint::None,
+            _ => Constraint::Diagonal,
+        };
     }
 
     pub fn toggle_length(&mut self, i: usize, length: f32) {
         self.vertices[i].constraint = Constraint::Length(length);
+    }
+
+    pub fn toggle_bezier(&mut self, i: usize) {
+        self.vertices[i].constraint = match self.vertices[i].constraint {
+            Constraint::Bezier(_, _) => Constraint::None,
+            _ => Constraint::Bezier(
+                self.vertices[i].pos + Vec2::new(10.0, 10.0),
+                self.vertices[i].pos + Vec2::new(20.0, 20.0),
+            ),
+        };
+    }
+
+    pub fn is_length_constrained(&mut self, i: usize) -> bool {
+        matches!(self.vertices[i].constraint, Constraint::Length(_))
+    }
+
+    pub fn reset_constraint(&mut self, i: usize) {
+        self.vertices[i].constraint = Constraint::None;
     }
 }

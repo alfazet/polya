@@ -119,6 +119,7 @@ impl eframe::App for PolygonEditor {
                         egui::Key::V => state.toggle_vertical(),
                         egui::Key::D => state.toggle_diagonal(),
                         egui::Key::L => state.length_dialog(),
+                        egui::Key::B => state.toggle_bezier(),
                         _ => self.handle_key(key),
                     }
                 }
