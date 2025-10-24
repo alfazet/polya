@@ -1,218 +1,338 @@
-use eframe::egui;
-use egui::{Pos2, Vec2};
+use egui::{Button, Color32, Context, Modifiers, PointerButton, Pos2, Rect, Vec2};
 
 use crate::{
-    constants,
-    drawing::{self, LineAlgorithm},
+    calc, constants,
+    dialog::FixedLengthDialog,
     polygon::Polygon,
-    polyline::Polyline,
+    vertex::{CubicBezier, EdgeConstraint, Vertex, VertexConstraint},
 };
 
-#[derive(Default)]
-pub struct EmptyState;
-
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct CreatingState {
-    polyline: Polyline,
-    line_algo: LineAlgorithm,
+    pub vertices: Vec<Vertex>,
 }
 
-#[derive(Default)]
-struct LengthDialog {
-    enabled: bool,
-    original: f32,
-    input: String,
-    value: f32,
-}
-
+#[derive(Debug)]
 pub struct EditingState {
-    polygon: Polygon,
-    line_algo: LineAlgorithm,
-    selected_vertex_id: Option<usize>,
-    selected_edge_id: Option<usize>,
-    dragged_vertex_id: Option<usize>,
-    length_dialog: LengthDialog,
+    pub polygon: Polygon,
+    pub dragged_vertex_i: Option<usize>,
+    // edge index, which control vertex of this edge (0/1)
+    pub dragged_control_vertex_i: Option<(usize, usize)>,
+    pub drag_anchor_i: Option<usize>,
+    pub selected_vertex_i: Option<usize>,
+    pub selected_edge_i: Option<usize>,
+    pub fixed_length_dialog: FixedLengthDialog,
 }
 
-impl EmptyState {
-    pub fn draw(&self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.style_mut().interaction.selectable_labels = false;
-            ui.heading("Place the first vertex [LMB]");
-        });
-    }
+#[derive(Clone, Copy, Debug)]
+pub enum StateTransition {
+    ToCreating,
+    ToEditing,
 }
 
 impl CreatingState {
-    pub fn new(initial_pos: Pos2) -> Self {
-        let polyline = Polyline::new(initial_pos);
-        Self {
-            polyline,
-            line_algo: LineAlgorithm::default(),
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn handle_add_point(
+        &mut self,
+        ctx: &Context,
+        canvas_rect: Rect,
+    ) -> Option<StateTransition> {
+        if let Some(mouse_pos) = ctx.pointer_interact_pos()
+            && canvas_rect.contains(mouse_pos)
+            && ctx.input(|i| i.pointer.button_released(PointerButton::Primary))
+        {
+            if self.vertices.len() >= 3 && self.vertices[0].is_near(mouse_pos) {
+                return Some(StateTransition::ToEditing);
+            }
+            self.vertices.push(Vertex::new(mouse_pos));
         }
-    }
 
-    pub fn draw(&self, ctx: &egui::Context, offset: Vec2, line_algo: LineAlgorithm) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.style_mut().interaction.selectable_labels = false;
-            ui.heading("Place and connect the vertices (restart with [Del])");
-            drawing::draw_polyline(ui, &self.polyline, offset, false, Some(0), None, line_algo);
-        });
-    }
-
-    pub fn is_closing_click(&self, pos: Pos2) -> bool {
-        self.polyline.vertices.len() >= 3
-            && self.polyline.vertices[0].pos.distance_sq(pos)
-                <= constants::VERTEX_RADIUS * constants::VERTEX_RADIUS
-    }
-
-    pub fn append_vertex(&mut self, pos: Pos2) {
-        self.polyline.append_vertex(pos);
+        None
     }
 }
 
 impl EditingState {
-    pub fn new(c_state: &CreatingState) -> Self {
+    pub fn new(vertices: Vec<Vertex>) -> Self {
         Self {
-            polygon: Polygon::new(c_state.polyline.clone()),
-            line_algo: LineAlgorithm::default(),
-            selected_vertex_id: None,
-            selected_edge_id: None,
-            dragged_vertex_id: None,
-            length_dialog: LengthDialog::default(),
+            polygon: Polygon::new(vertices),
+            dragged_vertex_i: None,
+            dragged_control_vertex_i: None,
+            drag_anchor_i: None,
+            selected_vertex_i: None,
+            selected_edge_i: None,
+            fixed_length_dialog: FixedLengthDialog::default(),
         }
     }
 
-    pub fn draw(&mut self, ctx: &egui::Context, offset: Vec2, line_algo: LineAlgorithm) {
-        if let Some(i) = self.selected_edge_id
-            && self.length_dialog.enabled
+    pub fn new_predefined() -> Self {
+        let mut vertices = vec![
+            Vertex::from((300.0, 200.0)),
+            Vertex::from((500.0, 200.0)),
+            Vertex::from((400.0, 300.0)),
+            Vertex::from((400.0, 400.0)),
+        ];
+        let mut state = Self::new(vertices);
+        state.polygon.init_bezier(0);
+        state.polygon.vertices[2].edge_c = Some(EdgeConstraint::Vertical);
+
+        state
+    }
+
+    pub fn handle_drag_vertex(&mut self, ctx: &Context) {
+        if let Some(mouse_pos) = ctx.pointer_interact_pos()
+            && ctx.input(|i| {
+                i.pointer.button_down(PointerButton::Primary)
+                    && i.modifiers.matches_exact(Modifiers::NONE)
+            })
         {
-            egui::Window::new("Length input")
-                .open(&mut self.length_dialog.enabled)
-                .show(ctx, |ui| {
-                    ui.add(egui::TextEdit::singleline(&mut self.length_dialog.input));
-                });
-            if let Ok(value) = self.length_dialog.input.parse::<f32>()
-                && value > 0.0
-            {
-                self.length_dialog.value = value;
-            } else if self.length_dialog.input.is_empty() {
-                self.length_dialog.value = self.length_dialog.original;
+            if let Some(v_i) = self.dragged_vertex_i {
+                if !self.polygon.try_move_vertex(v_i, mouse_pos) {
+                    self.polygon
+                        .move_polygon(mouse_pos - self.polygon.vertices[v_i].p);
+                }
+            } else if let Some((v_i, which)) = self.dragged_control_vertex_i {
+                if self.polygon.vertices[v_i].bezier.is_some() {
+                    self.polygon.try_move_control_vertex(v_i, which, mouse_pos);
+                }
+            } else {
+                // start dragging
+                for (i, v) in self.polygon.vertices.iter().enumerate() {
+                    if v.is_near(mouse_pos) {
+                        self.dragged_vertex_i = Some(i);
+                        break;
+                    }
+                    if let Some(bezier) = v.bezier
+                        && let Some(which) = bezier.nearby_control_vertex(mouse_pos)
+                    {
+                        self.dragged_control_vertex_i = Some((i, which));
+                        break;
+                    }
+                }
             }
-            self.polygon
-                .polyline
-                .toggle_length(i, self.length_dialog.value);
+        } else {
+            self.dragged_vertex_i = None;
+            self.dragged_control_vertex_i = None;
         }
-
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.style_mut().interaction.selectable_labels = false;
-            ui.heading("Select vertices/edges to edit");
-            ui.small("[Del]\tRemove polygon");
-            ui.small("[A]\t\tToggle line-drawing algorithm");
-            ui.small("[X]\t\tRemove vertex (if possible)");
-            ui.small("[S]\t\tSubdivide edge");
-            ui.small("[B]\t\tToggle Bézier curve");
-            ui.small("[C]\t\tToggle circular arc");
-            ui.small("[V]\t\tVertical edge constraint");
-            ui.small("[D]\t\tDiagonal edge constraint");
-            ui.small("[L]\t\tLength constraint");
-            ui.small("[1]\t\tG0 continuity in vertex");
-            ui.small("[2]\t\tG1 continuity in vertex");
-            ui.small("[3]\t\tC1 continuity in vertex");
-            drawing::draw_polyline(
-                ui,
-                &self.polygon.polyline,
-                offset,
-                true,
-                self.selected_vertex_id,
-                self.selected_edge_id,
-                line_algo,
-            );
-        });
     }
 
-    pub fn length_dialog(&mut self) {
-        if let Some(i) = self.selected_edge_id {
-            if self.polygon.polyline.is_length_constrained(i) {
-                self.polygon.polyline.reset_constraint(i);
+    pub fn handle_drag_polygon(&mut self, ctx: &Context) {
+        if let Some(mouse_pos) = ctx.pointer_interact_pos()
+            && ctx.input(|i| {
+                i.pointer.button_down(PointerButton::Primary)
+                    && i.modifiers.matches_exact(Modifiers::SHIFT)
+            })
+        {
+            if let Some(v_i) = self.drag_anchor_i {
+                self.polygon
+                    .move_polygon(mouse_pos - self.polygon.vertices[v_i].p);
+            } else if let Some(v_i) = self
+                .polygon
+                .vertices
+                .iter()
+                .position(|v| v.is_near(mouse_pos))
+            {
+                self.drag_anchor_i = Some(v_i);
+            }
+        } else {
+            self.drag_anchor_i = None;
+        }
+    }
+
+    pub fn handle_select(&mut self, ctx: &Context) {
+        if let Some(mouse_pos) = ctx.pointer_interact_pos()
+            && ctx.input(|i| i.pointer.button_down(PointerButton::Secondary))
+        {
+            self.selected_vertex_i = self
+                .polygon
+                .vertices
+                .iter()
+                .position(|v| v.is_near(mouse_pos));
+            if self.selected_vertex_i.is_some() {
+                self.selected_edge_i = None;
                 return;
             }
-            let (v0, v1) = self.polygon.polyline.get_edge(i);
-            let len = v0.distance(v1);
-            self.length_dialog.original = len;
-            self.length_dialog.input = len.to_string();
-            self.length_dialog.value = len;
-            self.length_dialog.enabled = true;
+            self.selected_edge_i = self
+                .polygon
+                .vertices
+                .iter()
+                .enumerate()
+                .position(|(i, _)| self.polygon.is_near_edge(i, mouse_pos));
+            if self.selected_edge_i.is_some() {
+                self.selected_vertex_i = None;
+            }
         }
     }
 
-    pub fn check_click(&mut self, pos: Pos2) {
-        if let Some(i) = self.polygon.polyline.vertices.iter().position(|vertex| {
-            vertex.pos.distance_sq(pos) <= constants::VERTEX_RADIUS * constants::VERTEX_RADIUS
-        }) {
-            self.selected_vertex_id = Some(i);
-            self.selected_edge_id = None;
+    pub fn handle_vertex_context_menu(&mut self, ctx: &Context) {
+        let Some(v_i) = self.selected_vertex_i else {
             return;
-        }
-        if let Some(i) = self
-            .polygon
-            .polyline
-            .get_edges(true)
-            .iter()
-            .position(|edge| edge.is_near(pos))
-        {
-            self.selected_edge_id = Some(i);
-            self.selected_vertex_id = None;
+        };
+        let menu_pos =
+            self.polygon.vertices[v_i].p + Vec2::splat(constants::SIZE_CONTEXT_MENU_OFFSET);
+        // let has_continuity_options = self.polygon.is_bezier_start(v_i)
+        //     || self.polygon.is_bezier_end(v_i)
+        //     || self.polygon.is_arc_start(v_i)
+        //     || self.polygon.is_arc_end(v_i);
+        egui::containers::Area::new(constants::ID_VERTEX_CONTEXT_MENU.into())
+            .fixed_pos(menu_pos)
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style())
+                    .outer_margin(0.0)
+                    .inner_margin(0.0)
+                    .fill(Color32::TRANSPARENT)
+                    .show(ui, |ui| {
+                        ui.set_min_width(constants::SIZE_CONTEXT_MENU);
+                        ui.spacing_mut().item_spacing = Vec2::ZERO;
+                        ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
+                            if ui.add(Button::new("Remove")).clicked() {
+                                self.polygon.remove_vertex(v_i);
+                                self.selected_vertex_i = None;
+                            }
+                            if ui.add(Button::new("Set G0")).clicked() {
+                                self.polygon
+                                    .try_set_vertex_constraint(v_i, VertexConstraint::G0);
+                                self.selected_vertex_i = None;
+                            }
+                            if ui
+                                .add_enabled(self.polygon.can_be_g1(v_i), Button::new("Set G1"))
+                                .clicked()
+                            {
+                                self.polygon
+                                    .try_set_vertex_constraint(v_i, VertexConstraint::G1);
+                                self.polygon
+                                    .try_move_vertex(v_i, self.polygon.vertices[v_i].p);
+                                self.selected_vertex_i = None;
+                            }
+                            if ui
+                                .add_enabled(self.polygon.can_be_c1(v_i), Button::new("Set C1"))
+                                .clicked()
+                            {
+                                self.polygon
+                                    .try_set_vertex_constraint(v_i, VertexConstraint::C1);
+                                self.polygon
+                                    .try_move_vertex(v_i, self.polygon.vertices[v_i].p);
+                                self.selected_vertex_i = None;
+                            }
+                        });
+                    });
+            });
+    }
+
+    pub fn handle_edge_context_menu(&mut self, ctx: &Context) {
+        let Some(e_i) = self.selected_edge_i else {
             return;
+        };
+        const CONSTRAINED: u8 = 1;
+        const BEZIER: u8 = 2;
+        const ARC: u8 = 4;
+        let mut mask = 0;
+        if self.polygon.vertices[e_i].edge_c.is_some() {
+            mask |= CONSTRAINED;
         }
-    }
-
-    pub fn apply_constraints(&mut self) {
-        let start = self.selected_vertex_id.unwrap_or(0);
-        self.polygon.polyline.apply_constraints(start);
-    }
-
-    pub fn drag_vertex(&mut self, delta: Vec2) {
-        if let Some(i) = self.selected_vertex_id {
-            self.polygon.polyline.drag_vertex(i, delta);
+        if self.polygon.vertices[e_i].bezier.is_some() {
+            mask |= BEZIER;
         }
-    }
-
-    pub fn remove_vertex(&mut self) {
-        if let Some(i) = self.selected_vertex_id {
-            self.polygon.polyline.remove_vertex(i);
+        if self.polygon.vertices[e_i].arc.is_some() {
+            mask |= ARC;
         }
-        self.selected_vertex_id = None;
-        self.selected_edge_id = None;
-    }
 
-    pub fn subdivide_edge(&mut self) {
-        if let Some(i) = self.selected_edge_id {
-            self.polygon.polyline.subdivide_edge(i);
-        }
-        self.selected_edge_id = None;
-    }
-
-    pub fn toggle_vertical(&mut self) {
-        if let Some(i) = self.selected_edge_id
-            && !self.polygon.polyline.any_vertical_neighbor(i)
-        {
-            self.polygon.polyline.toggle_vertical(i);
-        }
-        self.selected_vertex_id = None;
-    }
-
-    pub fn toggle_diagonal(&mut self) {
-        if let Some(i) = self.selected_edge_id {
-            self.polygon.polyline.toggle_diagonal(i);
-        }
-        self.selected_vertex_id = None;
-    }
-
-    pub fn toggle_bezier(&mut self) {
-        if let Some(i) = self.selected_edge_id {
-            self.polygon.polyline.toggle_bezier(i);
-        }
-        self.selected_vertex_id = None;
+        let next_i = (e_i + 1) % self.polygon.vertices.len();
+        let menu_pos = calc::midpoint(
+            self.polygon.vertices[e_i].p,
+            self.polygon.vertices[next_i].p,
+        ) + Vec2::splat(constants::SIZE_CONTEXT_MENU_OFFSET);
+        egui::containers::Area::new(constants::ID_EDGE_CONTEXT_MENU.into())
+            .fixed_pos(menu_pos)
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style())
+                    .outer_margin(0.0)
+                    .inner_margin(0.0)
+                    .fill(Color32::TRANSPARENT)
+                    .show(ui, |ui| {
+                        ui.set_min_width(constants::SIZE_CONTEXT_MENU);
+                        ui.spacing_mut().item_spacing = Vec2::ZERO;
+                        ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
+                            if mask == 0 {
+                                if ui
+                                    .add_enabled(
+                                        !self.polygon.has_vertical_neighbor(e_i),
+                                        Button::new("Make vertical"),
+                                    )
+                                    .clicked()
+                                {
+                                    self.polygon
+                                        .try_set_edge_constraint(e_i, EdgeConstraint::Vertical);
+                                    self.selected_edge_i = None;
+                                }
+                                if ui.add(Button::new("Make diagonal up [/]")).clicked() {
+                                    self.polygon
+                                        .try_set_edge_constraint(e_i, EdgeConstraint::DiagonalUp);
+                                    self.selected_edge_i = None;
+                                }
+                                if ui.add(Button::new("Make diagonal down [\\]")).clicked() {
+                                    self.polygon
+                                        .try_set_edge_constraint(e_i, EdgeConstraint::DiagonalDown);
+                                    self.selected_edge_i = None;
+                                }
+                                if ui.add(Button::new("To Bézier segment")).clicked() {
+                                    self.polygon.init_bezier(e_i);
+                                    self.polygon.vertices[e_i].edge_c = None;
+                                    self.polygon
+                                        .try_move_vertex(e_i, self.polygon.vertices[e_i].p);
+                                    self.selected_edge_i = None;
+                                }
+                                if ui.add(Button::new("To circular arc")).clicked() {
+                                    self.polygon.make_arc(e_i);
+                                    self.polygon.vertices[e_i].edge_c = None;
+                                    self.polygon
+                                        .try_move_vertex(e_i, self.polygon.vertices[e_i].p);
+                                    self.selected_edge_i = None;
+                                }
+                                let fix_length_btn = ui.add(Button::new("Fix length"));
+                                self.fixed_length_dialog.render(ui, &fix_length_btn);
+                                if fix_length_btn.clicked() {
+                                    self.fixed_length_dialog
+                                        .open(ui, self.polygon.edge_len(e_i));
+                                }
+                                if self.fixed_length_dialog.applied {
+                                    let len = self.fixed_length_dialog.value;
+                                    self.polygon.try_set_edge_constraint(
+                                        e_i,
+                                        EdgeConstraint::FixedLength(len),
+                                    );
+                                    self.selected_edge_i = None;
+                                    self.fixed_length_dialog.applied = false;
+                                }
+                            }
+                            if ((mask & BEZIER) | (mask & ARC)) == 0 {
+                                if ui.add(Button::new("Subdivide")).clicked() {
+                                    self.polygon.subdivide_edge(e_i);
+                                    self.selected_edge_i = None;
+                                }
+                            }
+                            if (mask & CONSTRAINED) > 0 {
+                                if ui.add(Button::new("Remove constraint")).clicked() {
+                                    self.polygon.vertices[e_i].edge_c = None;
+                                    self.selected_edge_i = None;
+                                }
+                            }
+                            if (mask & BEZIER) > 0 {
+                                if ui.add(Button::new("Remove Bézier segment")).clicked() {
+                                    self.polygon.vertices[e_i].bezier = None;
+                                    self.selected_edge_i = None;
+                                }
+                            }
+                            if (mask & ARC) > 0 {
+                                if ui.add(Button::new("Remove arc")).clicked() {
+                                    self.polygon.vertices[e_i].arc = None;
+                                    self.selected_edge_i = None;
+                                }
+                            }
+                        });
+                    });
+            });
     }
 }

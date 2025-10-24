@@ -1,4 +1,0 @@
-- labels on constrained edges/vertices
-- bezier (for now without paying attention to continuity)
-- circle arcs (ditto)
-- continuity
