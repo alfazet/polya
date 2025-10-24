@@ -1,10 +1,10 @@
-use egui::{Button, Color32, Context, Modifiers, PointerButton, Pos2, Rect, Vec2};
+use egui::{Button, Color32, Context, Modifiers, PointerButton, Rect, Vec2};
 
 use crate::{
     calc, constants,
     dialog::FixedLengthDialog,
     polygon::Polygon,
-    vertex::{CubicBezier, EdgeConstraint, Vertex, VertexConstraint},
+    vertex::{CircleArc, EdgeConstraint, Vertex, VertexConstraint},
 };
 
 #[derive(Debug, Default)]
@@ -26,7 +26,6 @@ pub struct EditingState {
 
 #[derive(Clone, Copy, Debug)]
 pub enum StateTransition {
-    ToCreating,
     ToEditing,
 }
 
@@ -68,15 +67,23 @@ impl EditingState {
     }
 
     pub fn new_predefined() -> Self {
-        let mut vertices = vec![
-            Vertex::from((300.0, 200.0)),
-            Vertex::from((500.0, 200.0)),
-            Vertex::from((400.0, 300.0)),
-            Vertex::from((400.0, 400.0)),
+        let vertices = vec![
+            Vertex::from((400.0, 200.0)),
+            Vertex::from((450.0, 150.0)),
+            Vertex::from((500.0, 100.0)),
+            Vertex::from((600.0, 150.0)),
+            Vertex::from((650.0, 200.0)),
+            Vertex::from((650.0, 400.0)),
+            Vertex::from((590.0, 480.0)),
+            Vertex::from((400.0, 350.0)),
         ];
         let mut state = Self::new(vertices);
         state.polygon.init_bezier(0);
-        state.polygon.vertices[2].edge_c = Some(EdgeConstraint::Vertical);
+        state.polygon.make_arc(2);
+        state.polygon.vertices[1].edge_c = Some(EdgeConstraint::DiagonalUp);
+        state.polygon.vertices[3].edge_c = Some(EdgeConstraint::DiagonalDown);
+        state.polygon.vertices[4].edge_c = Some(EdgeConstraint::Vertical);
+        state.polygon.vertices[5].edge_c = Some(EdgeConstraint::FixedLength(100.0));
 
         state
     }
@@ -172,10 +179,6 @@ impl EditingState {
         };
         let menu_pos =
             self.polygon.vertices[v_i].p + Vec2::splat(constants::SIZE_CONTEXT_MENU_OFFSET);
-        // let has_continuity_options = self.polygon.is_bezier_start(v_i)
-        //     || self.polygon.is_bezier_end(v_i)
-        //     || self.polygon.is_arc_start(v_i)
-        //     || self.polygon.is_arc_end(v_i);
         egui::containers::Area::new(constants::ID_VERTEX_CONTEXT_MENU.into())
             .fixed_pos(menu_pos)
             .show(ctx, |ui| {

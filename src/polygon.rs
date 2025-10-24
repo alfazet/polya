@@ -42,7 +42,7 @@ impl Polygon {
             )
             .into_iter()
             .any(|b_p| b_p.distance_sq(p) <= constants::SIZE_HITRADIUS * constants::SIZE_HITRADIUS)
-        } else if let Some(arc) = self.vertices[v_i].arc {
+        } else if self.vertices[v_i].arc.is_some() {
             let (s, r) = calc::circular_arc_data(
                 self.vertices[v_i],
                 self.vertices[next_i],
@@ -73,10 +73,6 @@ impl Polygon {
 
     pub fn is_bezier_start(&self, v_i: usize) -> bool {
         v_i < self.vertices.len() && self.vertices[v_i].bezier.is_some()
-    }
-
-    pub fn is_bezier_end(&self, v_i: usize) -> bool {
-        self.vertices[self.prev_i(v_i)].bezier.is_some()
     }
 
     pub fn is_arc_start(&self, v_i: usize) -> bool {

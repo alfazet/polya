@@ -1,4 +1,4 @@
-use egui::{Pos2, Vec2};
+use egui::Pos2;
 
 use crate::constants;
 

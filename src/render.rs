@@ -1,4 +1,4 @@
-use egui::{Color32, Painter, Pos2, Rect, Shape, Stroke, Vec2};
+use egui::{Painter, Pos2, Rect, Shape, Stroke, Vec2};
 
 use crate::{
     calc, constants,
@@ -143,7 +143,7 @@ pub fn render_polygon_edges(
                     constants::COLOR_VERTEX_TER,
                 );
             }
-        } else if let Some(arc) = vertices[i].arc {
+        } else if vertices[i].arc.is_some() {
             let prev = vertices[(i + vertices.len() - 1) % vertices.len()];
             let next = vertices[(i + 1) % vertices.len()];
             render_circular_arc(painter, v0, v1, prev, next, stroke);
